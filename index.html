@@ -403,28 +403,34 @@ const urlEl   = document.getElementById('focused-url');
 
 // Scroll so the focused card sits fully between the sticky topbar and the
 // fixed statusline, both of which overlap the viewport edges.
+//
+// The body is `zoom`ed, which splits coordinate systems: getBoundingClientRect
+// reports *visual* pixels (× zoom) while scroll offsets and getComputedStyle
+// lengths are *layout* pixels. We do all the geometry in visual space using the
+// bars' own rects as the boundaries, then divide the delta by zoom to scroll.
 function scrollFocusedIntoView(node) {
   const topBar = document.querySelector('.topbar');
   const status = document.querySelector('.statusline');
-
-  // Margin tracks the layout's own spacing (the grid gap) instead of a magic
-  // number, so it stays in sync if the design changes.
-  const grid = node.closest('.category-grid');
-  const gap = grid ? parseFloat(getComputedStyle(grid).rowGap) || 0 : 0;
-  const margin = gap || parseFloat(getComputedStyle(node).height) / 2;
-
-  const topPad = (topBar?.offsetHeight || 0) + margin;
-  const botPad = (status?.offsetHeight || 0) + margin;
+  const zoom = parseFloat(getComputedStyle(document.body).zoom) || 1;
 
   const rect = node.getBoundingClientRect();
-  const top = topPad;
-  const bottom = window.innerHeight - botPad;
+  const barBottom = topBar ? topBar.getBoundingClientRect().bottom : 0;
+  const statTop = status ? status.getBoundingClientRect().top : window.innerHeight * zoom;
 
-  if (rect.top < top) {
-    window.scrollBy({ top: rect.top - top, behavior: 'smooth' });
-  } else if (rect.bottom > bottom) {
-    window.scrollBy({ top: rect.bottom - bottom, behavior: 'smooth' });
-  }
+  // Margin tracks the layout's own spacing (the grid gap) instead of a magic
+  // number, so it stays in sync if the design changes. Convert it to visual px.
+  const grid = node.closest('.category-grid');
+  const gapLayout = grid ? parseFloat(getComputedStyle(grid).rowGap) || 0 : 0;
+  const margin = (gapLayout ? gapLayout * zoom : rect.height / 2);
+
+  const top = barBottom + margin;
+  const bottom = statTop - margin;
+
+  let delta = 0;
+  if (rect.top < top) delta = rect.top - top;
+  else if (rect.bottom > bottom) delta = rect.bottom - bottom;
+
+  if (delta) window.scrollBy({ top: delta / zoom, behavior: 'smooth' });
 }
 
 const FS = {
@@ -591,7 +597,8 @@ function webSearch(query, e) {
 search.addEventListener('input', () => FS.applyFilter());
 search.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    if (search.value) { search.value = ''; FS.applyFilter(); } else search.blur();
+    if (search.value) { search.value = ''; FS.applyFilter(); }
+    search.blur();
   } else if (e.key === 'Enter') {
     if (FS.visible.length && FS.idx >= 0) openFocused(e);
     else if (search.value.trim()) { e.preventDefault(); webSearch(search.value.trim(), e); }
