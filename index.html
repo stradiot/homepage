@@ -227,7 +227,7 @@
   <div class="brand"><b>martin@stradiot</b><span style="opacity:.4">:~</span><b>/start</b><span class="cursor"></span></div>
   <div class="searchwrap">
     <span class="slash">/</span>
-    <input id="search" placeholder="filter workspace, dev, ai tools…" autocomplete="off" spellcheck="false">
+    <input id="search" placeholder="search apps or the web…" autocomplete="off" spellcheck="false">
     <span class="kbd">/</span>
   </div>
   <div class="clock" id="clock"></div>
@@ -243,6 +243,7 @@
 
 <div class="statusline">
   <span class="hint"><b>/</b> search</span><span class="sep">│</span>
+  <span class="hint"><b>esc</b> exit search</span><span class="sep">│</span>
   <span class="hint"><b>j</b> <b>k</b> nav</span><span class="sep">│</span>
   <span class="hint"><b>↵</b> open</span><span class="sep">│</span>
   <span class="hint"><b>⌘↵</b> new tab</span>
@@ -400,8 +401,34 @@ const search  = document.getElementById('search');
 const countEl = document.getElementById('count');
 const urlEl   = document.getElementById('focused-url');
 
+// Scroll so the focused card sits fully between the sticky topbar and the
+// fixed statusline, both of which overlap the viewport edges.
+function scrollFocusedIntoView(node) {
+  const topBar = document.querySelector('.topbar');
+  const status = document.querySelector('.statusline');
+
+  // Margin tracks the layout's own spacing (the grid gap) instead of a magic
+  // number, so it stays in sync if the design changes.
+  const grid = node.closest('.category-grid');
+  const gap = grid ? parseFloat(getComputedStyle(grid).rowGap) || 0 : 0;
+  const margin = gap || parseFloat(getComputedStyle(node).height) / 2;
+
+  const topPad = (topBar?.offsetHeight || 0) + margin;
+  const botPad = (status?.offsetHeight || 0) + margin;
+
+  const rect = node.getBoundingClientRect();
+  const top = topPad;
+  const bottom = window.innerHeight - botPad;
+
+  if (rect.top < top) {
+    window.scrollBy({ top: rect.top - top, behavior: 'smooth' });
+  } else if (rect.bottom > bottom) {
+    window.scrollBy({ top: rect.bottom - bottom, behavior: 'smooth' });
+  }
+}
+
 const FS = {
-  all:     [],   
+  all:     [],
   visible: [],   
   idx:     -1,   
   current: null, 
@@ -422,7 +449,7 @@ const FS = {
     this.current.classList.add('focused');
     
     urlEl.innerHTML = `<span class="arrow">↗</span>${this.current.dataset.url}`;
-    if (scroll) this.current.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (scroll) scrollFocusedIntoView(this.current);
     updateCount();
   },
 
@@ -448,8 +475,15 @@ const FS = {
   },
 };
 
+function escapeHtml(s) {
+  return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
 function updateCount() {
-  if (search.value.trim()) {
+  const q = search.value.trim();
+  if (q && FS.visible.length === 0) {
+    countEl.innerHTML = `<span class="kbd">↵</span> search web for “<b style="color:var(--text-dim)">${escapeHtml(q)}</b>”`;
+  } else if (q) {
     countEl.innerHTML = `<b style="color:var(--text-dim)">${FS.visible.length}</b> / ${FS.all.length}`;
   } else {
     countEl.innerHTML = `<b style="color:var(--text-dim)">${FS.all.length}</b> apps`;
@@ -545,14 +579,24 @@ const KEY_ACTIONS = {
   g:          e => { if (e.shiftKey) return; if (gSeq.pending) { FS.setFocus(0); gSeq.pending = false; } else gSeq.arm(); },
 };
 
+// Fallback search engine used when a query matches no links.
+const SEARCH_ENGINE = 'https://www.google.com/search?q=';
+
+function webSearch(query, e) {
+  const url = SEARCH_ENGINE + encodeURIComponent(query);
+  if (e && (e.metaKey || e.ctrlKey)) window.open(url, '_blank');
+  else window.location.href = url;
+}
+
 search.addEventListener('input', () => FS.applyFilter());
 search.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (search.value) { search.value = ''; FS.applyFilter(); } else search.blur();
   } else if (e.key === 'Enter') {
     if (FS.visible.length && FS.idx >= 0) openFocused(e);
+    else if (search.value.trim()) { e.preventDefault(); webSearch(search.value.trim(), e); }
   } else if (e.key === 'ArrowDown') {
-    e.preventDefault(); search.blur(); FS.setFocus(0);
+    e.preventDefault(); e.stopPropagation(); search.blur(); FS.setFocus(0);
   }
 });
 
@@ -594,7 +638,20 @@ FS.init();
 buildNavModel();
 updateCount();
 
-if (localStorage.getItem('lp.theme') === 'light') { document.documentElement.classList.add('light'); }
+// Theme follows the OS preference by default; an explicit toggle overrides it.
+const prefersLight = window.matchMedia('(prefers-color-scheme: light)');
+function applyTheme() {
+  const saved = localStorage.getItem('lp.theme'); // 'light' | 'dark' | null
+  const light = saved ? saved === 'light' : prefersLight.matches;
+  document.documentElement.classList.toggle('light', light);
+}
+applyTheme();
+// Live-update if the OS theme changes and the user hasn't set an explicit one.
+prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.theme')) applyTheme(); });
+
+// Focus the search bar by default so the user can type immediately.
+search.focus();
+
 tick();
 setInterval(tick, 1000);
 
