@@ -184,13 +184,21 @@
 
   .card-icon {
     display: flex; align-items: center; justify-content: center;
-    width: 16px; height: 16px; 
+    width: 16px; height: 16px;
     color: var(--c, var(--text-dim)); /* Ikona získa farbu */
     flex-shrink: 0;
   }
+  .card-icon img { width: 16px; height: 16px; display: block; border-radius: 3px; }
   .card-info { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
   .card-title { font-weight: 500; font-size: 12.5px; letter-spacing: 0.02em; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
   .card-sub { font-size: 10.5px; color: var(--text-faint); letter-spacing: 0.04em; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-left: auto;
+    background: var(--text-faint); transition: background 200ms, box-shadow 200ms;
+  }
+  .status-dot.online  { background: var(--accent); box-shadow: 0 0 4px var(--accent); }
+  .status-dot.offline { background: var(--accent-red); }
 
   /* ───────── status & help ───────── */
   .statusline {
@@ -362,27 +370,49 @@ function el(tag, props = {}, ...children) {
   return node;
 }
 
+// Real favicons are more recognizable than the hand-drawn set and need no
+// per-link icon work, but local/offline hosts won't resolve through the
+// favicon service — fall back to the hand-drawn icon (or the generic one).
+function buildCardIcon(l) {
+  const wrap = el('div', { className: 'card-icon' });
+  let domain = '';
+  try { domain = new URL(l.url).hostname; } catch {}
+
+  if (domain) {
+    const img = el('img', {
+      src: `https://www.google.com/s2/favicons?sz=64&domain=${domain}`,
+      width: 16, height: 16, alt: '', loading: 'lazy',
+    });
+    img.addEventListener('error', () => { wrap.innerHTML = getIcon(l.id, 16); }, { once: true });
+    wrap.appendChild(img);
+  } else {
+    wrap.innerHTML = getIcon(l.id, 16);
+  }
+  return wrap;
+}
+
 function buildCategory(cat) {
   const grid = el('div', { className: 'category-grid' });
-  
+
   cat.links.forEach(l => {
     const card = el('a', {
       href: l.url,
       className: 'link-card',
       dataset: {
+        id: l.id,
         url: l.url,
         color: l.color || 'green',
         search: `${cat.label} ${l.label} ${l.sub || ''} ${l.id}`.toLowerCase(),
       }
     });
 
-    const iconHtml = `<div class="card-icon">${getIcon(l.id, 16)}</div>`;
-    const infoHtml = `<div class="card-info">
-                        <span class="card-title">${l.label}</span>
-                        <span class="card-sub">${l.sub || l.url}</span>
-                      </div>`;
-    
-    card.innerHTML = iconHtml + infoHtml;
+    const info = el('div', { className: 'card-info' },
+      `<span class="card-title">${l.label}</span><span class="card-sub">${l.sub || l.url}</span>`
+    );
+
+    card.appendChild(buildCardIcon(l));
+    card.appendChild(info);
+    if (l.check) card.appendChild(el('span', { className: 'status-dot', dataset: { checkUrl: l.url } }));
     grid.appendChild(card);
   });
 
@@ -392,6 +422,67 @@ function buildCategory(cat) {
     ),
     grid
   );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FRECENCY (usage nudges ordering *within* each category, categories
+// themselves and their relative order never change)
+// ═══════════════════════════════════════════════════════════════
+const FRECENCY_KEY = 'lp.frecency';
+
+function loadFrecency() {
+  try { return JSON.parse(localStorage.getItem(FRECENCY_KEY)) || {}; } catch { return {}; }
+}
+
+function recordVisit(id) {
+  if (!id) return;
+  const data = loadFrecency();
+  const entry = data[id] || { count: 0, last: 0 };
+  entry.count += 1;
+  entry.last = Date.now();
+  data[id] = entry;
+  localStorage.setItem(FRECENCY_KEY, JSON.stringify(data));
+}
+
+// Frequent-but-stale links decay below fresh ones over ~30 days, so the
+// ordering tracks current habits instead of ossifying around old peaks.
+function frecencyScore(id, data) {
+  const entry = data[id];
+  if (!entry) return 0;
+  const daysSince = (Date.now() - entry.last) / 86400000;
+  return entry.count / (1 + daysSince / 30);
+}
+
+function sortByFrecency() {
+  const data = loadFrecency();
+  document.querySelectorAll('.category-grid').forEach(grid => {
+    Array.from(grid.children)
+      .map((card, i) => ({ card, i, score: frecencyScore(card.dataset.id, data) }))
+      .sort((a, b) => b.score - a.score || a.i - b.i)
+      .forEach(({ card }) => grid.appendChild(card));
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LIVENESS CHECK (local services flagged with "check": true in config)
+// ═══════════════════════════════════════════════════════════════
+async function checkLiveness(url, timeoutMs = 2500) {
+  try {
+    // no-cors: we can't read the response, just whether the request settles.
+    await fetch(url, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function refreshLivenessDots() {
+  document.querySelectorAll('.status-dot[data-check-url]').forEach(dot => {
+    checkLiveness(dot.dataset.checkUrl).then(ok => {
+      dot.classList.toggle('online', ok);
+      dot.classList.toggle('offline', !ok);
+    });
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -488,7 +579,8 @@ function escapeHtml(s) {
 function updateCount() {
   const q = search.value.trim();
   if (q && FS.visible.length === 0) {
-    countEl.innerHTML = `<span class="kbd">↵</span> search web for “<b style="color:var(--text-dim)">${escapeHtml(q)}</b>”`;
+    const label = isUrlLike(q) ? 'go to' : 'search web for';
+    countEl.innerHTML = `<span class="kbd">↵</span> ${label} “<b style="color:var(--text-dim)">${escapeHtml(q)}</b>”`;
   } else if (q) {
     countEl.innerHTML = `<b style="color:var(--text-dim)">${FS.visible.length}</b> / ${FS.all.length}`;
   } else {
@@ -561,6 +653,7 @@ function navigate(dRow, dCol) {
 function openFocused(e) {
   const a = FS.visible[FS.idx];
   if (!a) return;
+  recordVisit(a.dataset.id);
   if (e.metaKey || e.ctrlKey) window.open(a.href, '_blank');
   else window.location.href = a.href;
 }
@@ -588,8 +681,21 @@ const KEY_ACTIONS = {
 // Fallback search engine used when a query matches no links.
 const SEARCH_ENGINE = 'https://www.google.com/search?q=';
 
+// Detect a pasted/typed address (has a scheme, or looks like a bare host) so
+// it can be opened directly instead of going through the search engine.
+function isUrlLike(q) {
+  if (/\s/.test(q)) return false;
+  if (/^[a-z][a-z0-9+.-]*:\/\/\S+$/i.test(q)) return true;
+  return /^([a-z0-9-]+\.)+[a-z]{2,}(:\d+)?(\/\S*)?$/i.test(q)
+      || /^localhost(:\d+)?(\/\S*)?$/i.test(q);
+}
+
+function resolveUrl(q) {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(q) ? q : `https://${q}`;
+}
+
 function webSearch(query, e) {
-  const url = SEARCH_ENGINE + encodeURIComponent(query);
+  const url = isUrlLike(query) ? resolveUrl(query) : SEARCH_ENGINE + encodeURIComponent(query);
   if (e && (e.metaKey || e.ctrlKey)) window.open(url, '_blank');
   else window.location.href = url;
 }
@@ -640,10 +746,19 @@ function tick() {
 
 const main = document.getElementById('main');
 CONFIG.categories.forEach(c => main.appendChild(buildCategory(c)));
+sortByFrecency();
 
 FS.init();
 buildNavModel();
 updateCount();
+
+refreshLivenessDots();
+setInterval(refreshLivenessDots, 60000);
+
+main.addEventListener('click', e => {
+  const a = e.target.closest('.link-card');
+  if (a) recordVisit(a.dataset.id);
+});
 
 // Theme follows the OS preference by default; an explicit toggle overrides it.
 const prefersLight = window.matchMedia('(prefers-color-scheme: light)');
