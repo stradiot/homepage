@@ -188,7 +188,6 @@
     color: var(--c, var(--text-dim)); /* Ikona získa farbu */
     flex-shrink: 0;
   }
-  .card-icon img { width: 16px; height: 16px; display: block; border-radius: 3px; }
   .card-info { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
   .card-title { font-weight: 500; font-size: 12.5px; letter-spacing: 0.02em; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
   .card-sub { font-size: 10.5px; color: var(--text-faint); letter-spacing: 0.04em; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
@@ -370,27 +369,6 @@ function el(tag, props = {}, ...children) {
   return node;
 }
 
-// Real favicons are more recognizable than the hand-drawn set and need no
-// per-link icon work, but local/offline hosts won't resolve through the
-// favicon service — fall back to the hand-drawn icon (or the generic one).
-function buildCardIcon(l) {
-  const wrap = el('div', { className: 'card-icon' });
-  let domain = '';
-  try { domain = new URL(l.url).hostname; } catch {}
-
-  if (domain) {
-    const img = el('img', {
-      src: `https://www.google.com/s2/favicons?sz=64&domain=${domain}`,
-      width: 16, height: 16, alt: '', loading: 'lazy',
-    });
-    img.addEventListener('error', () => { wrap.innerHTML = getIcon(l.id, 16); }, { once: true });
-    wrap.appendChild(img);
-  } else {
-    wrap.innerHTML = getIcon(l.id, 16);
-  }
-  return wrap;
-}
-
 function buildCategory(cat) {
   const grid = el('div', { className: 'category-grid' });
 
@@ -410,7 +388,7 @@ function buildCategory(cat) {
       `<span class="card-title">${l.label}</span><span class="card-sub">${l.sub || l.url}</span>`
     );
 
-    card.appendChild(buildCardIcon(l));
+    card.appendChild(el('div', { className: 'card-icon' }, getIcon(l.id, 16)));
     card.appendChild(info);
     if (l.check) card.appendChild(el('span', { className: 'status-dot', dataset: { checkUrl: l.url } }));
     grid.appendChild(card);
@@ -700,16 +678,24 @@ function webSearch(query, e) {
   else window.location.href = url;
 }
 
+// Search is focused by default; Tab / empty-Escape / Ctrl+J all drop you
+// straight into hjkl grid navigation without reaching for the mouse.
+function jumpToGrid(e) {
+  e.preventDefault(); e.stopPropagation();
+  search.blur();
+  FS.setFocus(0);
+}
+
 search.addEventListener('input', () => FS.applyFilter());
 search.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (search.value) { search.value = ''; FS.applyFilter(); }
-    search.blur();
+    else jumpToGrid(e);
   } else if (e.key === 'Enter') {
     if (FS.visible.length && FS.idx >= 0) openFocused(e);
     else if (search.value.trim()) { e.preventDefault(); webSearch(search.value.trim(), e); }
-  } else if (e.key === 'ArrowDown') {
-    e.preventDefault(); e.stopPropagation(); search.blur(); FS.setFocus(0);
+  } else if (e.key === 'ArrowDown' || e.key === 'Tab' || (e.ctrlKey && e.key === 'j')) {
+    jumpToGrid(e);
   }
 });
 
