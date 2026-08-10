@@ -679,17 +679,35 @@ const KEY_ACTIONS = {
 // Fallback search engine used when a query matches no links.
 const SEARCH_ENGINE = 'https://www.google.com/search?q=';
 
-// Detect a pasted/typed address (has a scheme, or looks like a bare host) so
+// Bare IPv4 / bracketed IPv6, with optional port and path: 192.168.1.50:8123,
+// [::1]/status. Octets are range-checked so a version string like 1.2.3.400
+// still falls through to search.
+const OCTET = '(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)';
+const IPV4_RE = new RegExp(`^${OCTET}(\\.${OCTET}){3}(:\\d+)?(\\/\\S*)?$`);
+const IPV6_RE = /^\[[0-9a-f:]+\](:\d+)?(\/\S*)?$/i;
+
+// Detect a pasted/typed address (has a scheme, or looks like a bare host/IP) so
 // it can be opened directly instead of going through the search engine.
 function isUrlLike(q) {
   if (/\s/.test(q)) return false;
   if (/^[a-z][a-z0-9+.-]*:\/\/\S+$/i.test(q)) return true;
-  return /^([a-z0-9-]+\.)+[a-z]{2,}(:\d+)?(\/\S*)?$/i.test(q)
+  return IPV4_RE.test(q) || IPV6_RE.test(q)
+      || /^([a-z0-9-]+\.)+[a-z]{2,}(:\d+)?(\/\S*)?$/i.test(q)
       || /^localhost(:\d+)?(\/\S*)?$/i.test(q);
 }
 
+// LAN boxes (router, NAS, Home Assistant…) rarely speak TLS, so a scheme-less
+// private address opens over http; everything else still defaults to https.
+function isPrivateAddress(q) {
+  const host = q.replace(/[:/].*$/, '');
+  return /^(10\.|127\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)
+      || /^\[(::1|f[cd][0-9a-f]{2}:)/i.test(q)
+      || /^localhost([:/]|$)/i.test(q);
+}
+
 function resolveUrl(q) {
-  return /^[a-z][a-z0-9+.-]*:\/\//i.test(q) ? q : `https://${q}`;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(q)) return q;
+  return `${isPrivateAddress(q) ? 'http' : 'https'}://${q}`;
 }
 
 function webSearch(query, e) {
