@@ -56,6 +56,18 @@ Pages does not always queue a build on push; force one with:
 gh api -X POST repos/<owner>/homepage/pages/builds
 ```
 
+A push landing is not evidence the site rebuilt — check the build actually
+succeeded, since a failed one leaves the previous version live and the only
+visible symptom is that nothing changed:
+
+```
+gh api repos/<owner>/homepage/pages/builds --jq '.[0] | "\(.status) \(.commit[0:7])"'
+```
+
+`.nojekyll` disables Jekyll. These are static files that need no preprocessing,
+and running it only adds a build step that can fail on the content of the
+markdown files.
+
 ### Why there is a service worker
 
 GitHub Pages pins `Cache-Control: max-age=600` and offers no way to set
