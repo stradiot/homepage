@@ -62,12 +62,17 @@ by two-thirds of the intended distance, which looks like a card parked half
 under the statusline rather than like an error.
 
 Scrolling therefore declares its constraints and lets the engine do the
-arithmetic: `.link-card` carries `scroll-margin-top`/`-bottom` fed from the
-bars' `offsetHeight` by `syncScrollMargins()`, and `scrollFocusedIntoView` is
-just `scrollIntoView({ block: 'nearest' })`. `offsetHeight` and `scroll-margin`
-are both layout pixels in the same subtree, so they need no conversion. Keep it
-that way; anything measuring with `getBoundingClientRect` and acting with
-`scrollBy` reintroduces the bug.
+arithmetic. `scrollFocusedIntoView` is just `scrollIntoView({ block: 'nearest' })`,
+and the space the bars occupy is expressed as `scroll-padding-top`/`-bottom` on
+**`html`**, set by `syncScrollPadding()` from the bars' `getBoundingClientRect()`.
+
+The element this sits on is the whole point. `html` is outside `body`'s zoom, so
+its lengths, the scroll offset and a `getBoundingClientRect()` measurement are
+all in the viewport's coordinate space and need no conversion. Putting the same
+values in `scroll-margin` on `.link-card` does not work: the cards are inside
+the zoom, so their lengths are scaled and the constraint comes out short.
+Measuring with `getBoundingClientRect` and acting with `scrollBy` has the same
+flaw in a different place.
 
 ## Checking a change
 
