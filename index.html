@@ -3,6 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <title>martin // start</title>
+<script>
+// Must run before the body parses. Deciding the theme further down would paint
+// the dark :root defaults first and flash on the way to light.
+const prefersLight = window.matchMedia('(prefers-color-scheme: light)');
+function applyTheme() {
+  const saved = localStorage.getItem('lp.theme'); // 'light' | 'dark' | null
+  const light = saved ? saved === 'light' : prefersLight.matches;
+  document.documentElement.classList.toggle('light', light);
+}
+applyTheme();
+// Live-update if the OS theme changes and the user hasn't set an explicit one.
+prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.theme')) applyTheme(); });
+</script>
 <style>
   :root {
     --bg: #0a0b0d;
@@ -234,7 +247,7 @@
   <div class="brand"><b>martin@stradiot</b><span style="opacity:.4">:~</span><b>/start</b><span class="cursor"></span></div>
   <div class="searchwrap">
     <span class="slash">/</span>
-    <input id="search" placeholder="search apps or the web…" autocomplete="off" spellcheck="false">
+    <input id="search" placeholder="search apps or the web…" autocomplete="off" spellcheck="false" autofocus>
     <span class="kbd">/</span>
   </div>
   <div class="clock" id="clock"></div>
@@ -327,6 +340,7 @@
       "id": "finance",
       "label": "Finance",
       "icon": "chart",
+      "keywords": "investing brokers banking etf portfolio",
       "links": [
         { "id": "ibkr", "label": "Interactive Brokers", "sub": "client portal", "url": "https://www.interactivebrokers.ie/portal", "color": "red" },
         { "id": "trading212", "label": "Trading 212", "sub": "app.trading212.com", "url": "https://app.trading212.com/", "color": "blue" },
@@ -408,7 +422,7 @@ function buildCategory(cat) {
         id: l.id,
         url: l.url,
         color: l.color || 'green',
-        search: `${cat.label} ${l.label} ${l.sub || ''} ${l.id}`.toLowerCase(),
+        search: `${cat.label} ${cat.keywords || ''} ${l.label} ${l.sub || ''} ${l.id}`.toLowerCase(),
       }
     });
 
@@ -792,19 +806,12 @@ main.addEventListener('click', e => {
   if (a) recordVisit(a.dataset.id);
 });
 
-// Theme follows the OS preference by default; an explicit toggle overrides it.
-const prefersLight = window.matchMedia('(prefers-color-scheme: light)');
-function applyTheme() {
-  const saved = localStorage.getItem('lp.theme'); // 'light' | 'dark' | null
-  const light = saved ? saved === 'light' : prefersLight.matches;
-  document.documentElement.classList.toggle('light', light);
-}
-applyTheme();
-// Live-update if the OS theme changes and the user hasn't set an explicit one.
-prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.theme')) applyTheme(); });
-
-// Focus the search bar by default so the user can type immediately.
-search.focus();
+// The input carries autofocus, so the caret is already there from parse time
+// and keystrokes buffered during this script land in it. This only covers the
+// case where autofocus did not take. Claiming focus unconditionally would pull
+// it out of the address bar mid-word when the browser kept it there, splitting
+// the query across two places.
+if (document.hasFocus() && document.activeElement === document.body) search.focus();
 
 tick();
 setInterval(tick, 1000);
