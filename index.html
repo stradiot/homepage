@@ -175,6 +175,11 @@ prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.th
     border: 1px solid var(--border); border-radius: 8px;
     text-decoration: none; color: var(--text);
     width: var(--col-w);
+    /* The sticky topbar and fixed statusline overlap the viewport edges; these
+       keep scrollIntoView from parking a card underneath either one. Set from
+       the bars' measured heights at boot. */
+    scroll-margin-top: var(--scroll-margin-top, 72px);
+    scroll-margin-bottom: var(--scroll-margin-bottom, 56px);
     transition: all 120ms;
     position: relative; overflow: hidden;
   }
@@ -519,29 +524,23 @@ const urlEl   = document.getElementById('focused-url');
 // reports *visual* pixels (× zoom) while scroll offsets and getComputedStyle
 // lengths are *layout* pixels. We do all the geometry in visual space using the
 // bars' own rects as the boundaries, then divide the delta by zoom to scroll.
-function scrollFocusedIntoView(node) {
+// Publish the bars' heights as the cards' scroll margins. offsetHeight and
+// scroll-margin are both layout pixels inside the zoomed subtree, so they agree
+// without conversion — unlike getBoundingClientRect, which reports visual
+// pixels and cannot be reconciled with scroll offsets by a fixed factor.
+function syncScrollMargins() {
+  const root = document.documentElement.style;
   const topBar = document.querySelector('.topbar');
   const status = document.querySelector('.statusline');
-  const zoom = parseFloat(getComputedStyle(document.body).zoom) || 1;
+  const gap = 16;
+  if (topBar) root.setProperty('--scroll-margin-top', `${topBar.offsetHeight + gap}px`);
+  if (status) root.setProperty('--scroll-margin-bottom', `${status.offsetHeight + gap}px`);
+}
 
-  const rect = node.getBoundingClientRect();
-  const barBottom = topBar ? topBar.getBoundingClientRect().bottom : 0;
-  const statTop = status ? status.getBoundingClientRect().top : window.innerHeight * zoom;
-
-  // Margin tracks the layout's own spacing (the grid gap) instead of a magic
-  // number, so it stays in sync if the design changes. Convert it to visual px.
-  const grid = node.closest('.category-grid');
-  const gapLayout = grid ? parseFloat(getComputedStyle(grid).rowGap) || 0 : 0;
-  const margin = (gapLayout ? gapLayout * zoom : rect.height / 2);
-
-  const top = barBottom + margin;
-  const bottom = statTop - margin;
-
-  let delta = 0;
-  if (rect.top < top) delta = rect.top - top;
-  else if (rect.bottom > bottom) delta = rect.bottom - bottom;
-
-  if (delta) window.scrollBy({ top: delta / zoom, behavior: 'smooth' });
+// 'nearest' scrolls the least amount that clears both margins, and does
+// nothing when the card is already fully visible.
+function scrollFocusedIntoView(node) {
+  node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 const FS = {
@@ -769,6 +768,7 @@ document.addEventListener('keydown', e => {
 });
 
 window.addEventListener('resize', () => {
+  syncScrollMargins();
   buildNavModel();
 });
 
@@ -794,6 +794,7 @@ const main = document.getElementById('main');
 CONFIG.categories.forEach(c => main.appendChild(buildCategory(c)));
 sortByFrecency();
 
+syncScrollMargins();
 FS.init();
 buildNavModel();
 updateCount();

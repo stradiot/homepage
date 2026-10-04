@@ -55,10 +55,19 @@ When debugging anything cache-shaped, `shift`-reload bypasses the worker.
 ## Geometry
 
 `body` has `zoom: 1.5`, which splits coordinate systems: `getBoundingClientRect`
-returns visual pixels (× zoom) while scroll offsets and computed lengths are
-layout pixels. `scrollFocusedIntoView` does its geometry in visual space and
-divides by zoom only when scrolling. Mixing the two silently misplaces things
-by 50%.
+reports visual pixels (× zoom) while scroll offsets and computed lengths are
+layout pixels. Do not try to reconcile the two with a zoom factor — the
+relationship is not stable across browser versions, and getting it wrong scrolls
+by two-thirds of the intended distance, which looks like a card parked half
+under the statusline rather than like an error.
+
+Scrolling therefore declares its constraints and lets the engine do the
+arithmetic: `.link-card` carries `scroll-margin-top`/`-bottom` fed from the
+bars' `offsetHeight` by `syncScrollMargins()`, and `scrollFocusedIntoView` is
+just `scrollIntoView({ block: 'nearest' })`. `offsetHeight` and `scroll-margin`
+are both layout pixels in the same subtree, so they need no conversion. Keep it
+that way; anything measuring with `getBoundingClientRect` and acting with
+`scrollBy` reintroduces the bug.
 
 ## Checking a change
 
