@@ -822,6 +822,12 @@ document.getElementById('theme').addEventListener('click', toggleTheme);
 document.getElementById('help-btn').addEventListener('click', () => { document.getElementById('help').classList.toggle('open'); });
 document.getElementById('help').addEventListener('click', e => { if (e.target.id === 'help') document.getElementById('help').classList.remove('open'); });
 
+// Deferred to load so registration never competes with first paint: the worker
+// only needs to be in place for the *next* new tab, never this one.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+}
+
 </script>
 </body>
 </html>
