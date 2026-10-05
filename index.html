@@ -61,10 +61,12 @@ prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.th
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); height: 100%; }
   /* The scrollport's unusable edges, where the sticky topbar and fixed
-     statusline sit. This belongs on html rather than on the cards: html is
-     outside body's zoom, so these lengths share a coordinate system with the
-     scroll offset. Replaced at boot with the bars' measured heights. */
-  html { scroll-padding-top: 72px; scroll-padding-bottom: 56px; }
+     statusline sit. These live on html because it is outside body's zoom and so
+     shares a coordinate system with the scroll offset. Deliberately generous and
+     static: both bars are fixed-height by design, and erring high only parks a
+     focused card further from the edge, while erring low hides it. Bump these if
+     either bar grows. */
+  html { scroll-padding-top: 150px; scroll-padding-bottom: 120px; }
   body {
     zoom: 1.5;
     font-family: 'SF Mono', 'JetBrains Mono', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
@@ -227,6 +229,7 @@ prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.th
   .help dl { display: grid; grid-template-columns: auto 1fr; gap: 10px 18px; margin: 0; font-size: 12px; }
   .help dt { color: var(--text-dim); }
   .help dd { margin: 0; color: var(--text); }
+  .help .build { margin: 18px 0 0; color: var(--text-faint); font-size: 10.5px; letter-spacing: 0.04em; }
   .help kbd { font-size: 11px; padding: 2px 6px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 3px; color: var(--text); background: var(--surface-2); font-family: inherit; margin-right: 4px; }
   ::selection { background: rgba(95,219,130,0.25); color: var(--text); }
   html.light ::selection { background: rgba(31,138,68,0.18); }
@@ -272,6 +275,7 @@ prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.th
       <dt><kbd>⌘</kbd><kbd>↵</kbd></dt><dd>open in new tab</dd>
       <dt><kbd>t</kbd></dt><dd>toggle theme</dd>
     </dl>
+    <p class="build">build <span id="build"></span></p>
   </div>
 </div>
 
@@ -496,28 +500,6 @@ function refreshLivenessDots() {
 const search  = document.getElementById('search');
 const countEl = document.getElementById('count');
 const urlEl   = document.getElementById('focused-url');
-
-// Reserve the strips the sticky topbar and fixed statusline cover, so a focused
-// card is never scrolled underneath either of them.
-function syncScrollPadding() {
-  const root = document.documentElement.style;
-  const body = document.body;
-  const topBar = document.querySelector('.topbar');
-  const status = document.querySelector('.statusline');
-
-  // Scroll padding sits on html, outside body's zoom, so every length below has
-  // to be in viewport pixels. Browsers disagree about whether
-  // getBoundingClientRect reports a zoomed element in viewport pixels or in its
-  // own, so the ratio is measured rather than assumed: offsetWidth is always the
-  // element's own pixels, and dividing the two says which convention is in use.
-  const zoom = parseFloat(getComputedStyle(body).zoom) || 1;
-  const rectScale = body.offsetWidth ? body.getBoundingClientRect().width / body.offsetWidth : 1;
-  const toViewport = zoom / (rectScale || 1);
-
-  const gap = 16 * toViewport;
-  if (topBar) root.scrollPaddingTop = `${topBar.getBoundingClientRect().height * toViewport + gap}px`;
-  if (status) root.scrollPaddingBottom = `${status.getBoundingClientRect().height * toViewport + gap}px`;
-}
 
 // 'nearest' scrolls the least amount that clears both margins, and does
 // nothing when the card is already fully visible.
@@ -750,7 +732,6 @@ document.addEventListener('keydown', e => {
 });
 
 window.addEventListener('resize', () => {
-  syncScrollPadding();
   buildNavModel();
 });
 
@@ -776,7 +757,6 @@ const main = document.getElementById('main');
 CONFIG.categories.forEach(c => main.appendChild(buildCategory(c)));
 sortByFrecency();
 
-syncScrollPadding();
 FS.init();
 buildNavModel();
 updateCount();
@@ -807,6 +787,8 @@ main.addEventListener('mouseleave', () => {
   if (FS.current) { urlEl.innerHTML = `<span class="arrow">↗</span>${FS.current.dataset.url}`; }
   else { urlEl.innerHTML = ''; }
 });
+
+document.getElementById('build').textContent = document.lastModified;
 
 document.getElementById('theme').addEventListener('click', toggleTheme);
 document.getElementById('help-btn').addEventListener('click', () => { document.getElementById('help').classList.toggle('open'); });

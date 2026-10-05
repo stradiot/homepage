@@ -54,25 +54,27 @@ When debugging anything cache-shaped, `shift`-reload bypasses the worker.
 
 ## Geometry
 
-`body` has `zoom: 1.5`, which splits coordinate systems: `getBoundingClientRect`
-reports visual pixels (× zoom) while scroll offsets and computed lengths are
-layout pixels. Do not try to reconcile the two with a zoom factor — the
-relationship is not stable across browser versions, and getting it wrong scrolls
-by two-thirds of the intended distance, which looks like a card parked half
-under the statusline rather than like an error.
+`body` has `zoom: 1.5`, and that single declaration is behind every scrolling
+bug this file has had. It makes two coordinate systems coexist — the zoomed
+subtree and the unzoomed root — and browsers do not agree on which one
+`getBoundingClientRect` reports for a zoomed element. Any code that measures in
+one and acts in the other is guessing, and the symptom is never an exception: it
+is a focused card parked slightly under the statusline, which reads as a design
+nit rather than a bug.
 
-Scrolling therefore declares its constraints and lets the engine do the
-arithmetic. `scrollFocusedIntoView` is just `scrollIntoView({ block: 'nearest' })`,
-and the space the bars occupy is expressed as `scroll-padding-top`/`-bottom` on
-**`html`**, set by `syncScrollPadding()` from the bars' `getBoundingClientRect()`.
+So: do not measure the bars at runtime, and do not convert between the two
+spaces. `scrollFocusedIntoView` is `scrollIntoView({ block: 'nearest' })`, and
+the strips the bars cover are static `scroll-padding-top`/`-bottom` on **`html`**.
 
-The element this sits on is the whole point. `html` is outside `body`'s zoom, so
-its lengths, the scroll offset and a `getBoundingClientRect()` measurement are
-all in the viewport's coordinate space and need no conversion. Putting the same
-values in `scroll-margin` on `.link-card` does not work: the cards are inside
-the zoom, so their lengths are scaled and the constraint comes out short.
-Measuring with `getBoundingClientRect` and acting with `scrollBy` has the same
-flaw in a different place.
+Two properties make that safe. `html` is outside the zoom, so its lengths share
+a coordinate system with the scroll offset — the same values in `scroll-margin`
+on `.link-card` do *not* work, because the cards are inside the zoom and come
+out scaled. And the values are deliberately too large: both bars are fixed-height
+by design, over-reserving only parks a card further from the edge, while
+under-reserving hides it. Bump them if a bar grows.
+
+Deleting `zoom` and scaling through a root `font-size` with `rem` units would
+retire this whole section. It is the real fix; nobody has done it.
 
 ## Checking a change
 

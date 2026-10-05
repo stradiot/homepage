@@ -87,7 +87,10 @@ Consequences worth knowing:
 - The first visit in a given browser profile still goes to the network; the
   worker takes over from the navigation after that.
 - `shift`-reload bypasses the worker entirely. Once a worker is in play,
-  "I reloaded and nothing changed" is not evidence of anything.
+  "I reloaded and nothing changed" is not evidence of anything. **Testing one
+  new tab per deploy means always looking at the previous build** — the `?`
+  modal prints the served copy's `Last-Modified` so which build is on screen is
+  never a guess.
 - Removing `sw.js` from the repository does **not** uninstall it. A registered
   worker lives in the browser profile and keeps serving its cache. To retire it,
   either unregister per machine via `about:debugging#/runtime/this-firefox`, or
