@@ -119,7 +119,11 @@ prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.th
 
   /* ───────── main layout ───────── */
   main {
-    padding: 32px 28px 80px;
+    /* The bottom padding is what lets the last row scroll clear of the
+       statusline: scroll-padding reserves a strip, but the document still has to
+       be able to scroll that far. Keep it comfortably above
+       scroll-padding-bottom, remembering this is inside body's zoom. */
+    padding: 32px 28px 180px;
     display: flex; flex-direction: column; gap: 36px;
     max-width: 1100px; margin: 0 auto;
     width: 100%;
@@ -375,6 +379,7 @@ const ICONS = {
   finax:     s => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v9l8 4"></path></svg>`,
   portu:     s => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="18" x2="20" y2="18"></line><line x1="4" y1="12" x2="15" y2="12"></line><line x1="4" y1="6" x2="10" y2="6"></line></svg>`,
   bank365:   s => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10l9-6 9 6"></path><line x1="6" y1="10" x2="6" y2="18"></line><line x1="12" y1="10" x2="12" y2="18"></line><line x1="18" y1="10" x2="18" y2="18"></line><line x1="3" y1="21" x2="21" y2="21"></line></svg>`,
+  history:   s => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 16 14"></polyline></svg>`,
   default:   s => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`
 };
 
@@ -412,6 +417,7 @@ function buildCategory(cat) {
         url: l.url,
         color: l.color || 'green',
         search: `${cat.label} ${cat.keywords || ''} ${l.label} ${l.sub || ''} ${l.id}`.toLowerCase(),
+        ...(l.query && { query: l.query }),
       }
     });
 
@@ -443,7 +449,11 @@ function loadFrecency() {
   try { return JSON.parse(localStorage.getItem(FRECENCY_KEY)) || {}; } catch { return {}; }
 }
 
-function recordVisit(id) {
+function recordVisit(card) {
+  const query = card && card.dataset.query;
+  if (query) { recordQuery(query); return; }
+
+  const id = card && card.dataset.id;
   if (!id) return;
   const data = loadFrecency();
   const entry = data[id] || { count: 0, last: 0 };
@@ -470,6 +480,45 @@ function sortByFrecency() {
       .sort((a, b) => b.score - a.score || a.i - b.i)
       .forEach(({ card }) => grid.appendChild(card));
   });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// QUERY HISTORY (queries that reached the web; link visits are frecency's job)
+// ═══════════════════════════════════════════════════════════════
+const QUERY_KEY = 'lp.queries';
+const QUERY_CAP = 50;    // kept in storage
+const QUERY_SHOWN = 8;   // rendered at once
+
+function loadQueries() {
+  try { return JSON.parse(localStorage.getItem(QUERY_KEY)) || {}; } catch { return {}; }
+}
+
+// Shares frecencyScore with the link ordering, so a query typed often but not
+// lately sinks below one typed recently rather than holding its place forever.
+function recordQuery(text) {
+  const q = text.trim();
+  if (!q) return;
+  const data = loadQueries();
+  const entry = data[q] || { count: 0, last: 0 };
+  entry.count += 1;
+  entry.last = Date.now();
+  data[q] = entry;
+
+  const keys = Object.keys(data);
+  if (keys.length > QUERY_CAP) {
+    keys.sort((a, b) => frecencyScore(b, data) - frecencyScore(a, data))
+        .slice(QUERY_CAP)
+        .forEach(k => delete data[k]);
+  }
+  try { localStorage.setItem(QUERY_KEY, JSON.stringify(data)); } catch { /* quota */ }
+}
+
+function topQueries(q, limit) {
+  const data = loadQueries();
+  return Object.keys(data)
+    .filter(text => !q || text.toLowerCase().includes(q))
+    .sort((a, b) => frecencyScore(b, data) - frecencyScore(a, data))
+    .slice(0, limit);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -567,7 +616,7 @@ function updateCount() {
   } else if (q) {
     countEl.innerHTML = `<b style="color:var(--text-dim)">${FS.visible.length}</b> / ${FS.all.length}`;
   } else {
-    countEl.innerHTML = `<b style="color:var(--text-dim)">${FS.all.length}</b> apps`;
+    countEl.innerHTML = `<b style="color:var(--text-dim)">${FS.all.filter(a => !a.dataset.query).length}</b> apps`;
   }
 }
 
@@ -636,7 +685,7 @@ function navigate(dRow, dCol) {
 function openFocused(e) {
   const a = FS.visible[FS.idx];
   if (!a) return;
-  recordVisit(a.dataset.id);
+  recordVisit(a);
   if (e.metaKey || e.ctrlKey) window.open(a.href, '_blank');
   else window.location.href = a.href;
 }
@@ -695,8 +744,15 @@ function resolveUrl(q) {
   return `${isPrivateAddress(q) ? 'http' : 'https'}://${q}`;
 }
 
+// Shared with the history cards so a remembered query resolves exactly as it
+// did when typed: a stored LAN address still opens over http, not a web search.
+function queryUrl(q) {
+  return isUrlLike(q) ? resolveUrl(q) : SEARCH_ENGINE + encodeURIComponent(q);
+}
+
 function webSearch(query, e) {
-  const url = isUrlLike(query) ? resolveUrl(query) : SEARCH_ENGINE + encodeURIComponent(query);
+  recordQuery(query);
+  const url = queryUrl(query);
   if (e && (e.metaKey || e.ctrlKey)) window.open(url, '_blank');
   else window.location.href = url;
 }
@@ -709,10 +765,47 @@ function jumpToGrid(e) {
   FS.setFocus(0);
 }
 
-search.addEventListener('input', () => FS.applyFilter());
+// Rebuilt rather than filtered in place: .dim only fades a card, it keeps its
+// layout space, so filtering a long history would leave a column of ghosts.
+// Cards are real anchors, which is what lets openFocused, Cmd+Enter and click
+// work on them with no branching.
+function renderHistory(q) {
+  const existing = document.getElementById('history-section');
+  if (existing) existing.remove();
+
+  const entries = topQueries(q, QUERY_SHOWN);
+  if (!entries.length) return;
+
+  const section = buildCategory({
+    id: 'history',
+    label: 'Recent searches',
+    keywords: 'history queries',
+    icon: 'history',
+    links: entries.map(text => ({
+      id: 'history',
+      label: text,
+      sub: isUrlLike(text) ? 'open directly' : 'web search',
+      url: queryUrl(text),
+      color: 'purple',
+      query: text,
+    })),
+  });
+  section.id = 'history-section';
+  main.appendChild(section);
+}
+
+// FS caches the card list, so it has to re-read the DOM between the rebuild and
+// the filter.
+function refreshResults() {
+  renderHistory(search.value.trim().toLowerCase());
+  FS.init();
+  FS.applyFilter();
+}
+
+search.addEventListener('input', () => refreshResults());
 search.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    if (search.value) { search.value = ''; FS.applyFilter(); }
+    if (search.value) { search.value = ''; refreshResults(); }
     else jumpToGrid(e);
   } else if (e.key === 'Enter') {
     if (FS.visible.length && FS.idx >= 0) openFocused(e);
@@ -756,6 +849,7 @@ function tick() {
 const main = document.getElementById('main');
 CONFIG.categories.forEach(c => main.appendChild(buildCategory(c)));
 sortByFrecency();
+renderHistory('');
 
 FS.init();
 buildNavModel();
@@ -766,7 +860,7 @@ setInterval(refreshLivenessDots, 60000);
 
 main.addEventListener('click', e => {
   const a = e.target.closest('.link-card');
-  if (a) recordVisit(a.dataset.id);
+  if (a) recordVisit(a);
 });
 
 // The input carries autofocus, so the caret is already there from parse time

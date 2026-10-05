@@ -29,6 +29,20 @@ Cards are ordered within each category by frecency — visit count decayed over
 roughly 30 days, so the ordering tracks current habits rather than ossifying
 around old peaks. Categories and their order never move.
 
+## Search history
+
+Queries that reach the web are remembered and offered back as a **Recent
+searches** section in the grid, ranked by the same frecency curve as the links.
+They are ordinary cards, so filtering, `hjkl`, Enter and `⌘`-Enter work on them
+with no separate mode and no extra keybindings. A remembered query resolves the
+way it did when typed, so a stored LAN address still opens over `http` rather
+than becoming a web search.
+
+Link clicks are not recorded here; those already drive the per-category
+ordering. At most 50 queries are stored and 8 shown. Everything lives in
+`localStorage` under `lp.queries`, per origin — clear it from the console with
+`localStorage.removeItem('lp.queries')`.
+
 ## Adding a link
 
 Edit the `<script type="application/json" id="config">` block in `index.html`:
