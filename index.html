@@ -90,7 +90,7 @@ prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.th
   .clock b { color: var(--text); font-weight: 500; }
   
   .searchwrap {
-    flex: 1; max-width: 480px; display: flex; align-items: center; gap: 8px;
+    flex: 1; max-width: 760px; display: flex; align-items: center; gap: 8px;
     padding: 6px 12px; background: var(--surface); border: 1px solid var(--border);
     border-radius: 4px; transition: border-color 120ms;
   }
@@ -213,9 +213,6 @@ prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.th
     border-top: 1px solid var(--border); background: var(--bg);
     font-size: 10.5px; color: var(--text-faint); letter-spacing: 0.08em; z-index: 5;
   }
-  .statusline .sep { color: var(--border-strong); flex-shrink: 0; }
-  .statusline .hint { white-space: nowrap; flex-shrink: 0; }
-  .statusline .hint b { color: var(--text-dim); font-weight: 500; }
   .statusline .right { margin-left: auto; display: flex; gap: 18px; align-items: center; flex: 1 1 auto; justify-content: flex-end; overflow: hidden; }
   .statusline #focused-url { color: var(--focus); letter-spacing: 0; text-transform: none; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .statusline #focused-url .arrow { color: var(--text-faint); margin-right: 8px; }
@@ -255,11 +252,6 @@ prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.th
 <main id="main"></main>
 
 <div class="statusline">
-  <span class="hint"><b>/</b> search</span><span class="sep">│</span>
-  <span class="hint"><b>esc</b> exit search</span><span class="sep">│</span>
-  <span class="hint"><b>j</b> <b>k</b> nav</span><span class="sep">│</span>
-  <span class="hint"><b>↵</b> open</span><span class="sep">│</span>
-  <span class="hint"><b>⌘↵</b> new tab</span>
   <div class="right">
     <span id="focused-url"></span>
     <span id="count"></span>
