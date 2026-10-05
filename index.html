@@ -497,24 +497,26 @@ const search  = document.getElementById('search');
 const countEl = document.getElementById('count');
 const urlEl   = document.getElementById('focused-url');
 
-// Scroll so the focused card sits fully between the sticky topbar and the
-// fixed statusline, both of which overlap the viewport edges.
-//
-// The body is `zoom`ed, which splits coordinate systems: getBoundingClientRect
-// reports *visual* pixels (× zoom) while scroll offsets and getComputedStyle
-// lengths are *layout* pixels. We do all the geometry in visual space using the
-// bars' own rects as the boundaries, then divide the delta by zoom to scroll.
-// Both bars are measured with getBoundingClientRect, which reports the on-screen
-// size after body's zoom, and the result is written to html — which sits outside
-// that zoom. Scroll padding, the scroll offset and these measurements are then
-// all in the viewport's own coordinate space, so nothing needs converting.
+// Reserve the strips the sticky topbar and fixed statusline cover, so a focused
+// card is never scrolled underneath either of them.
 function syncScrollPadding() {
   const root = document.documentElement.style;
+  const body = document.body;
   const topBar = document.querySelector('.topbar');
   const status = document.querySelector('.statusline');
-  const gap = 12;
-  if (topBar) root.scrollPaddingTop = `${topBar.getBoundingClientRect().height + gap}px`;
-  if (status) root.scrollPaddingBottom = `${status.getBoundingClientRect().height + gap}px`;
+
+  // Scroll padding sits on html, outside body's zoom, so every length below has
+  // to be in viewport pixels. Browsers disagree about whether
+  // getBoundingClientRect reports a zoomed element in viewport pixels or in its
+  // own, so the ratio is measured rather than assumed: offsetWidth is always the
+  // element's own pixels, and dividing the two says which convention is in use.
+  const zoom = parseFloat(getComputedStyle(body).zoom) || 1;
+  const rectScale = body.offsetWidth ? body.getBoundingClientRect().width / body.offsetWidth : 1;
+  const toViewport = zoom / (rectScale || 1);
+
+  const gap = 16 * toViewport;
+  if (topBar) root.scrollPaddingTop = `${topBar.getBoundingClientRect().height * toViewport + gap}px`;
+  if (status) root.scrollPaddingBottom = `${status.getBoundingClientRect().height * toViewport + gap}px`;
 }
 
 // 'nearest' scrolls the least amount that clears both margins, and does
