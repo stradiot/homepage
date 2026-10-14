@@ -22,7 +22,7 @@ instead of searched — private-range addresses over `http`, everything else ove
 | `h` `j` `k` `l` / arrows | move around the grid |
 | `g` `g` / `G` | first / last card |
 | `↵` | open focused link (`⌘↵` in a new tab) |
-| `1`–`9` | open the focused link's nth address |
+| `1`–`9` | open the focused link's nth address (`⌥1`–`⌥9` from the search box) |
 | `tab` / `⇧tab` | cycle search suggestions |
 | `t` | toggle theme |
 | `?` | keybind help |
@@ -75,7 +75,8 @@ A link reachable at more than one address takes `urls` in place of `url`:
 
 The card lists the addresses by label in place of `sub`. Enter and a plain
 click open the first; `1`–`9` on the focused card, or a click on a label, open
-that one. The labels are searchable, so `vpn` finds the card.
+that one. From the search box it is `⌥1`–`⌥9`, since a bare digit there is
+just part of the query. The labels are searchable, so `vpn` finds the card.
 
 A link with `"check": true` gets a status dot that probes whether the host is
 reachable, for local services worth seeing the state of at a glance.

@@ -302,7 +302,7 @@ prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.th
       <dt><kbd>l</kbd> <kbd>→</kbd></dt><dd>right / next item</dd>
       <dt><kbd>↵</kbd></dt><dd>open focused link</dd>
       <dt><kbd>⌘</kbd><kbd>↵</kbd></dt><dd>open in new tab</dd>
-      <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>open the focused link's nth address</dd>
+      <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>open the focused link's nth address (<kbd>⌥</kbd> while typing)</dd>
       <dt><kbd>tab</kbd> <kbd>⇧</kbd><kbd>tab</kbd></dt><dd>cycle search suggestions</dd>
       <dt><kbd>t</kbd></dt><dd>toggle theme</dd>
     </dl>
@@ -756,7 +756,6 @@ const KEY_ACTIONS = {
   G:          _e => FS.setFocus(FS.visible.length - 1),
   g:          e => { if (e.shiftKey) return; if (gSeq.pending) { FS.setFocus(0); gSeq.pending = false; } else gSeq.arm(); },
 };
-for (let n = 1; n <= 9; n++) KEY_ACTIONS[n] = e => { if (FS.idx >= 0) { e.preventDefault(); openFocused(e, n - 1); } };
 
 // Fallback search engine used when a query matches no links.
 const SEARCH_ENGINE = 'https://www.google.com/search?q=';
@@ -866,6 +865,11 @@ document.addEventListener('keydown', e => {
   if (e.key === '/' && !inInput) { KEY_ACTIONS['/'](e); return; }
   if (e.key === '?' && !inInput) { KEY_ACTIONS['?'](e); return; }
   if (e.key === 'Escape')        { KEY_ACTIONS['Escape'](e); return; }
+  // A focused card's nth address. In the search box a bare digit has to stay
+  // typeable, so there it takes Option; matched on code because Option turns
+  // the key itself into a symbol on macOS.
+  const digit = /^Digit([1-9])$/.exec(e.code);
+  if (digit && (e.altKey || !inInput) && FS.idx >= 0) { e.preventDefault(); openFocused(e, digit[1] - 1); return; }
   if (inInput) return;
   KEY_ACTIONS[e.key]?.(e);
 });
