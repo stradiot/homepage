@@ -95,15 +95,34 @@ prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.th
     flex: 1; max-width: 760px; display: flex; align-items: center; gap: 8px;
     padding: 6px 12px; background: var(--surface); border: 1px solid var(--border);
     border-radius: 4px; transition: border-color 120ms;
+    position: relative;
   }
   .searchwrap:focus-within { border-color: var(--border-strong); }
   .searchwrap .slash { color: var(--text-faint); font-size: 12px; }
   .searchwrap input {
-    flex: 1; background: transparent; border: 0; outline: 0;
+    flex: 1; min-width: 0; background: transparent; border: 0; outline: 0;
     color: var(--text); font-family: inherit; font-size: 13px;
   }
   .searchwrap input::placeholder { color: var(--text-faint); }
-  
+
+  .suggestions {
+    position: absolute; top: calc(100% + 4px); left: -1px; right: -1px;
+    margin: 0; padding: 4px 0; list-style: none;
+    background: var(--surface); border: 1px solid var(--border-strong); border-radius: 4px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+  }
+  .suggestions:empty, .searchwrap:not(:focus-within) .suggestions { display: none; }
+  .suggestions li {
+    display: flex; align-items: center; gap: 10px; padding: 5px 12px;
+    color: var(--text-dim); cursor: pointer; white-space: nowrap; overflow: hidden;
+  }
+  .suggestions li svg { flex-shrink: 0; color: var(--text-faint); }
+  .suggestions li span { overflow: hidden; text-overflow: ellipsis; }
+  .suggestions li b { color: var(--text); font-weight: 500; }
+  .suggestions li:hover { background: var(--surface-2); }
+  .suggestions li.active { background: var(--surface-2); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
+  .suggestions li.active svg { color: var(--accent); }
+
   .kbd {
     font-size: 10px; padding: 2px 5px; border: 1px solid var(--border);
     border-radius: 3px; color: var(--text-dim); background: var(--surface-2); font-family: inherit;
@@ -204,6 +223,11 @@ prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.th
   .card-info { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
   .card-title { font-weight: 500; font-size: 12.5px; letter-spacing: 0.02em; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
   .card-sub { font-size: 10.5px; color: var(--text-faint); letter-spacing: 0.04em; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+  .card-sub .alt { cursor: pointer; }
+  .card-sub .alt + .alt { margin-left: 8px; }
+  .card-sub .alt b { font-weight: 500; color: var(--text-dim); margin-right: 3px; }
+  .card-sub .alt:hover { color: var(--c, var(--text)); }
+  .link-card.focused .card-sub .alt b { color: var(--c, var(--text)); }
 
   .status-dot {
     width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-left: auto;
@@ -245,6 +269,7 @@ prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.th
   <div class="searchwrap">
     <span class="slash">/</span>
     <input id="search" placeholder="search apps or the web…" autocomplete="off" spellcheck="false" autofocus>
+    <ul class="suggestions" id="suggestions"></ul>
     <span class="kbd">/</span>
   </div>
   <div class="clock" id="clock"></div>
@@ -277,6 +302,8 @@ prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.th
       <dt><kbd>l</kbd> <kbd>→</kbd></dt><dd>right / next item</dd>
       <dt><kbd>↵</kbd></dt><dd>open focused link</dd>
       <dt><kbd>⌘</kbd><kbd>↵</kbd></dt><dd>open in new tab</dd>
+      <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>open the focused link's nth address</dd>
+      <dt><kbd>tab</kbd> <kbd>⇧</kbd><kbd>tab</kbd></dt><dd>cycle search suggestions</dd>
       <dt><kbd>t</kbd></dt><dd>toggle theme</dd>
     </dl>
     <p class="build">build <span id="build"></span></p>
@@ -305,7 +332,9 @@ prefersLight.addEventListener('change', () => { if (!localStorage.getItem('lp.th
       "icon": "terminal",
       "links": [
         { "id": "github", "label": "GitHub", "sub": "repositories", "url": "https://github.com/", "color": "purple" },
-        { "id": "ha", "label": "Home Assistant", "sub": "homeassistant.local", "url": "http://homeassistant.local:8123/", "color": "cyan" },
+        { "id": "ha", "label": "Home Assistant", "color": "cyan", "urls": [
+          { "label": "local", "url": "http://homeassistant.local:8123/" },
+          { "label": "vpn", "url": "http://100.81.215.108:8123/" } ] },
         { "id": "jlcpcb", "label": "JLCPCB", "sub": "pcb fabrication", "url": "https://jlcpcb.com/", "color": "blue" },
         { "id": "ideas", "label": "Project Ideas", "sub": "stradiot.github.io", "url": "https://stradiot.github.io/project-ideas/", "color": "amber" }
       ]
@@ -409,25 +438,30 @@ function buildCategory(cat) {
   const grid = el('div', { className: 'category-grid' });
 
   cat.links.forEach(l => {
+    const urls = l.urls || [{ url: l.url }];
     const card = el('a', {
-      href: l.url,
+      href: urls[0].url,
       className: 'link-card',
       dataset: {
         id: l.id,
-        url: l.url,
+        url: urls[0].url,
         color: l.color || 'green',
-        search: `${cat.label} ${cat.keywords || ''} ${l.label} ${l.sub || ''} ${l.id}`.toLowerCase(),
-        ...(l.query && { query: l.query }),
+        search: `${cat.label} ${cat.keywords || ''} ${l.label} ${l.sub || ''} ${l.id} ${urls.map(u => u.label || '').join(' ')}`.toLowerCase(),
       }
     });
 
+    // Spans, not anchors: the card is already an <a>, and nested anchors are
+    // invalid HTML that the parser splits apart.
+    const sub = urls.length > 1
+      ? urls.map((u, i) => `<span class="alt" data-url="${u.url}"><b>${i + 1}</b>${u.label}</span>`).join('')
+      : (l.sub || urls[0].url);
     const info = el('div', { className: 'card-info' },
-      `<span class="card-title">${l.label}</span><span class="card-sub">${l.sub || l.url}</span>`
+      `<span class="card-title">${l.label}</span><span class="card-sub">${sub}</span>`
     );
 
     card.appendChild(el('div', { className: 'card-icon' }, getIcon(l.id, 16)));
     card.appendChild(info);
-    if (l.check) card.appendChild(el('span', { className: 'status-dot', dataset: { checkUrl: l.url } }));
+    if (l.check) card.appendChild(el('span', { className: 'status-dot', dataset: { checkUrl: urls[0].url } }));
     grid.appendChild(card);
   });
 
@@ -450,9 +484,6 @@ function loadFrecency() {
 }
 
 function recordVisit(card) {
-  const query = card && card.dataset.query;
-  if (query) { recordQuery(query); return; }
-
   const id = card && card.dataset.id;
   if (!id) return;
   const data = loadFrecency();
@@ -486,8 +517,7 @@ function sortByFrecency() {
 // QUERY HISTORY (queries that reached the web; link visits are frecency's job)
 // ═══════════════════════════════════════════════════════════════
 const QUERY_KEY = 'lp.queries';
-const QUERY_CAP = 50;    // kept in storage
-const QUERY_SHOWN = 8;   // rendered at once
+const QUERY_CAP = 50;
 
 function loadQueries() {
   try { return JSON.parse(localStorage.getItem(QUERY_KEY)) || {}; } catch { return {}; }
@@ -513,12 +543,20 @@ function recordQuery(text) {
   try { localStorage.setItem(QUERY_KEY, JSON.stringify(data)); } catch { /* quota */ }
 }
 
-function topQueries(q, limit) {
+const QUERY_SHOWN = 8;
+
+// Prefix matches rank above mid-string ones regardless of frecency: what was
+// typed is far more often the start of the wanted query than a fragment of it.
+function suggestQueries(typed) {
+  const q = typed.trim().toLowerCase();
+  if (!q) return [];
   const data = loadQueries();
   return Object.keys(data)
-    .filter(text => !q || text.toLowerCase().includes(q))
-    .sort((a, b) => frecencyScore(b, data) - frecencyScore(a, data))
-    .slice(0, limit);
+    .filter(text => text.toLowerCase().includes(q) && text.toLowerCase() !== q)
+    .map(text => ({ text, prefix: text.toLowerCase().startsWith(q), score: frecencyScore(text, data) }))
+    .sort((a, b) => b.prefix - a.prefix || b.score - a.score)
+    .slice(0, QUERY_SHOWN)
+    .map(e => e.text);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -610,13 +648,13 @@ function escapeHtml(s) {
 
 function updateCount() {
   const q = search.value.trim();
-  if (q && FS.visible.length === 0) {
+  if (q && (FS.visible.length === 0 || SUG.idx >= 0)) {
     const label = isUrlLike(q) ? 'go to' : 'search web for';
     countEl.innerHTML = `<span class="kbd">↵</span> ${label} “<b style="color:var(--text-dim)">${escapeHtml(q)}</b>”`;
   } else if (q) {
     countEl.innerHTML = `<b style="color:var(--text-dim)">${FS.visible.length}</b> / ${FS.all.length}`;
   } else {
-    countEl.innerHTML = `<b style="color:var(--text-dim)">${FS.all.filter(a => !a.dataset.query).length}</b> apps`;
+    countEl.innerHTML = `<b style="color:var(--text-dim)">${FS.all.length}</b> apps`;
   }
 }
 
@@ -682,12 +720,21 @@ function navigate(dRow, dCol) {
 // KEYBOARD & MOUSE EVENT LISTENERS
 // ═══════════════════════════════════════════════════════════════
 
-function openFocused(e) {
+function openUrl(url, e) {
+  if (e && (e.metaKey || e.ctrlKey)) window.open(url, '_blank');
+  else window.location.href = url;
+}
+
+// n picks one of a multi-address card's alternates; a card with a single
+// address has none, so only n = 0 opens it.
+function openFocused(e, n = 0) {
   const a = FS.visible[FS.idx];
   if (!a) return;
+  const alts = a.querySelectorAll('.alt');
+  const url = alts.length ? alts[n]?.dataset.url : n === 0 && a.href;
+  if (!url) return;
   recordVisit(a);
-  if (e.metaKey || e.ctrlKey) window.open(a.href, '_blank');
-  else window.location.href = a.href;
+  openUrl(url, e);
 }
 
 const gSeq = { pending: false, arm() { this.pending = true; setTimeout(() => { this.pending = false; }, 400); } };
@@ -709,6 +756,7 @@ const KEY_ACTIONS = {
   G:          _e => FS.setFocus(FS.visible.length - 1),
   g:          e => { if (e.shiftKey) return; if (gSeq.pending) { FS.setFocus(0); gSeq.pending = false; } else gSeq.arm(); },
 };
+for (let n = 1; n <= 9; n++) KEY_ACTIONS[n] = e => { if (FS.idx >= 0) { e.preventDefault(); openFocused(e, n - 1); } };
 
 // Fallback search engine used when a query matches no links.
 const SEARCH_ENGINE = 'https://www.google.com/search?q=';
@@ -744,72 +792,70 @@ function resolveUrl(q) {
   return `${isPrivateAddress(q) ? 'http' : 'https'}://${q}`;
 }
 
-// Shared with the history cards so a remembered query resolves exactly as it
-// did when typed: a stored LAN address still opens over http, not a web search.
-function queryUrl(q) {
-  return isUrlLike(q) ? resolveUrl(q) : SEARCH_ENGINE + encodeURIComponent(q);
-}
-
 function webSearch(query, e) {
   recordQuery(query);
-  const url = queryUrl(query);
-  if (e && (e.metaKey || e.ctrlKey)) window.open(url, '_blank');
-  else window.location.href = url;
+  openUrl(isUrlLike(query) ? resolveUrl(query) : SEARCH_ENGINE + encodeURIComponent(query), e);
 }
 
-// Search is focused by default; Tab / empty-Escape / Ctrl+J all drop you
-// straight into hjkl grid navigation without reaching for the mouse.
+// Search is focused by default; Tab (when no suggestions are listed) /
+// empty-Escape / Ctrl+J all drop you straight into hjkl grid navigation
+// without reaching for the mouse.
 function jumpToGrid(e) {
   e.preventDefault(); e.stopPropagation();
   search.blur();
   FS.setFocus(0);
 }
 
-// Rebuilt rather than filtered in place: .dim only fades a card, it keeps its
-// layout space, so filtering a long history would leave a column of ghosts.
-// Cards are real anchors, which is what lets openFocused, Cmd+Enter and click
-// work on them with no branching.
-function renderHistory(q) {
-  const existing = document.getElementById('history-section');
-  if (existing) existing.remove();
+// Cycling a suggestion writes it into the input the way a browser address bar
+// does, but deliberately skips the card filter: the cards keep reflecting what
+// was actually typed, which is what cycling back to idx -1 restores.
+const SUG = {
+  list:  document.getElementById('suggestions'),
+  items: [],
+  idx:   -1,
+  typed: '',
 
-  const entries = topQueries(q, QUERY_SHOWN);
-  if (!entries.length) return;
+  render() {
+    this.typed = search.value;
+    this.items = suggestQueries(this.typed);
+    this.idx = -1;
+    const q = this.typed.trim().toLowerCase();
+    this.list.replaceChildren(...this.items.map(text => {
+      const at = text.toLowerCase().indexOf(q);
+      const label = el('span');
+      label.append(text.slice(0, at), el('b', { textContent: text.slice(at, at + q.length) }), text.slice(at + q.length));
+      return el('li', { dataset: { query: text } }, getIcon('history', 12), label);
+    }));
+  },
 
-  const section = buildCategory({
-    id: 'history',
-    label: 'Recent searches',
-    keywords: 'history queries',
-    icon: 'history',
-    links: entries.map(text => ({
-      id: 'history',
-      label: text,
-      sub: isUrlLike(text) ? 'open directly' : 'web search',
-      url: queryUrl(text),
-      color: 'purple',
-      query: text,
-    })),
-  });
-  section.id = 'history-section';
-  main.appendChild(section);
-}
+  select(i) {
+    const n = this.items.length;
+    this.idx = i >= n ? -1 : i < -1 ? n - 1 : i;
+    Array.from(this.list.children).forEach((li, j) => li.classList.toggle('active', j === this.idx));
+    search.value = this.idx >= 0 ? this.items[this.idx] : this.typed;
+    // A focused card would otherwise still claim Enter.
+    if (this.idx >= 0) FS.clearFocus();
+    else FS.applyFilter();
+  },
+};
 
-// FS caches the card list, so it has to re-read the DOM between the rebuild and
-// the filter.
 function refreshResults() {
-  renderHistory(search.value.trim().toLowerCase());
-  FS.init();
   FS.applyFilter();
+  SUG.render();
 }
 
 search.addEventListener('input', () => refreshResults());
 search.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    if (search.value) { search.value = ''; refreshResults(); }
+    if (SUG.idx >= 0) SUG.select(-1);
+    else if (search.value) { search.value = ''; refreshResults(); }
     else jumpToGrid(e);
   } else if (e.key === 'Enter') {
-    if (FS.visible.length && FS.idx >= 0) openFocused(e);
+    if (SUG.idx < 0 && FS.visible.length && FS.idx >= 0) openFocused(e);
     else if (search.value.trim()) { e.preventDefault(); webSearch(search.value.trim(), e); }
+  } else if (e.key === 'Tab' && SUG.items.length) {
+    e.preventDefault();
+    SUG.select(SUG.idx + (e.shiftKey ? -1 : 1));
   } else if (e.key === 'ArrowDown' || e.key === 'Tab' || (e.ctrlKey && e.key === 'j')) {
     jumpToGrid(e);
   }
@@ -849,18 +895,38 @@ function tick() {
 const main = document.getElementById('main');
 CONFIG.categories.forEach(c => main.appendChild(buildCategory(c)));
 sortByFrecency();
-renderHistory('');
 
+// Not just the empty state: anything typed while this script was still
+// running landed in the autofocused input before the input listener existed.
 FS.init();
-buildNavModel();
-updateCount();
+refreshResults();
 
 refreshLivenessDots();
 setInterval(refreshLivenessDots, 60000);
 
+// mousedown, not click: by click time the input has blurred and :focus-within
+// has already hidden the list out from under the pointer.
+SUG.list.addEventListener('mousedown', e => {
+  const li = e.target.closest('li');
+  if (!li) return;
+  e.preventDefault();
+  webSearch(li.dataset.query, e);
+});
+
 main.addEventListener('click', e => {
   const a = e.target.closest('.link-card');
-  if (a) recordVisit(a);
+  if (!a) return;
+  recordVisit(a);
+  const alt = e.target.closest('.alt');
+  if (alt) { e.preventDefault(); openUrl(alt.dataset.url, e); }
+});
+// Middle-click on an alternate would otherwise open the card's own href.
+main.addEventListener('auxclick', e => {
+  const alt = e.button === 1 && e.target.closest('.alt');
+  if (!alt) return;
+  e.preventDefault();
+  recordVisit(alt.closest('.link-card'));
+  window.open(alt.dataset.url, '_blank');
 });
 
 // The input carries autofocus, so the caret is already there from parse time
@@ -874,7 +940,7 @@ tick();
 setInterval(tick, 1000);
 
 main.addEventListener('mouseover', e => {
-  const a = e.target.closest('.link-card');
+  const a = e.target.closest('.alt') || e.target.closest('.link-card');
   if (a) { urlEl.innerHTML = `<span class="arrow">↗</span>${a.dataset.url}`; }
 });
 main.addEventListener('mouseleave', () => {

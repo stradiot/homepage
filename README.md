@@ -22,6 +22,8 @@ instead of searched — private-range addresses over `http`, everything else ove
 | `h` `j` `k` `l` / arrows | move around the grid |
 | `g` `g` / `G` | first / last card |
 | `↵` | open focused link (`⌘↵` in a new tab) |
+| `1`–`9` | open the focused link's nth address |
+| `tab` / `⇧tab` | cycle search suggestions |
 | `t` | toggle theme |
 | `?` | keybind help |
 
@@ -31,17 +33,22 @@ around old peaks. Categories and their order never move.
 
 ## Search history
 
-Queries that reach the web are remembered and offered back as a **Recent
-searches** section in the grid, ranked by the same frecency curve as the links.
-They are ordinary cards, so filtering, `hjkl`, Enter and `⌘`-Enter work on them
-with no separate mode and no extra keybindings. A remembered query resolves the
-way it did when typed, so a stored LAN address still opens over `http` rather
-than becoming a web search.
+Queries that reach the web are remembered and offered back as you type, in a
+list under the search box like a browser's address bar. Up to 8 are shown:
+those starting with what you typed first, then any containing it, each group
+ranked by the same frecency curve as the links.
 
-Link clicks are not recorded here; those already drive the per-category
-ordering. At most 50 queries are stored and 8 shown. Everything lives in
-`localStorage` under `lp.queries`, per origin — clear it from the console with
-`localStorage.removeItem('lp.queries')`.
+`tab` / `⇧tab` cycle through them, writing the selected one into the input;
+cycling past either end returns to what you typed, as does `esc`. Enter
+searches whatever the input holds, so nothing is picked unless you select it.
+The arrow keys stay with the grid. With no suggestions listed, `tab` drops into
+grid navigation as before.
+
+A remembered query resolves the way it did when typed, so a stored LAN address
+still opens over `http` rather than becoming a web search. Link clicks are not
+recorded here; those already drive the per-category ordering. At most 50
+queries are stored, in `localStorage` under `lp.queries`, per origin — clear it
+from the console with `localStorage.removeItem('lp.queries')`.
 
 ## Adding a link
 
@@ -57,6 +64,18 @@ also selects the card icon from the `ICONS` map further down the file — add a
 matching entry there or the card falls back to a generic one. A category may
 carry a `keywords` string, which is folded into the searchable text of every
 card beneath it so a section stays findable under names other than its label.
+
+A link reachable at more than one address takes `urls` in place of `url`:
+
+```json
+{ "id": "ha", "label": "Home Assistant", "color": "cyan", "urls": [
+  { "label": "local", "url": "http://homeassistant.local:8123/" },
+  { "label": "vpn",   "url": "https://…" } ] }
+```
+
+The card lists the addresses by label in place of `sub`. Enter and a plain
+click open the first; `1`–`9` on the focused card, or a click on a label, open
+that one. The labels are searchable, so `vpn` finds the card.
 
 A link with `"check": true` gets a status dot that probes whether the host is
 reachable, for local services worth seeing the state of at a glance.
